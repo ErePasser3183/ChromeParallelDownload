@@ -10,6 +10,7 @@ import time
 import urllib.request
 import urllib.parse
 import uuid
+import tempfile
 
 ROOT = Path(__file__).resolve().parent
 CONFIG_FILE = Path(os.environ.get('CHROME_PARALLEL_DOWNLOAD_CONFIG', ROOT / 'config.json'))
@@ -19,6 +20,54 @@ STAGE = DEST / '.ChromeParallelDownload'
 OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 JOBS_FILE = Path(CONFIG.get('jobs_file', ROOT / 'jobs.json'))
 JOBS = json.loads(JOBS_FILE.read_text(encoding='utf-8')) if JOBS_FILE.exists() else {}
+PICKER = None
+PICKER_ERROR = None
+
+def set_directory(value):
+    global DEST, STAGE, CONFIG, PICKER_ERROR
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError('请输入完整的文件夹路径')
+    directory = Path(value.strip()).expanduser()
+    if not directory.is_absolute():
+        raise ValueError('请使用绝对路径，例如 D:\\Downloads')
+    try:
+        directory = directory.resolve()
+        directory.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryFile(dir=directory):
+            pass
+    except OSError as exc:
+        raise ValueError('该目录无法写入，请选择其他文件夹') from exc
+    updated = {**CONFIG, 'download_dir': str(directory)}
+    temporary = CONFIG_FILE.with_suffix('.tmp')
+    temporary.write_text(json.dumps(updated, ensure_ascii=False), encoding='utf-8')
+    temporary.replace(CONFIG_FILE)
+    CONFIG = updated
+    DEST = directory
+    STAGE = DEST / '.ChromeParallelDownload'
+    PICKER_ERROR = None
+    return {'directory': str(DEST)}
+
+def choose_directory():
+    global PICKER, PICKER_ERROR
+    if PICKER is None:
+        PICKER_ERROR = None
+        PICKER = subprocess.Popen([sys.executable, str(ROOT / 'folder_picker.py'), str(DEST)],
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            text=True, encoding='utf-8', creationflags=subprocess.CREATE_NO_WINDOW)
+    return {'choosing': True}
+
+def poll_picker():
+    global PICKER, PICKER_ERROR
+    if PICKER is not None and PICKER.poll() is not None:
+        process, PICKER = PICKER, None
+        try:
+            result = json.loads(process.communicate()[0])
+            if process.returncode != 0 or result.get('error'):
+                raise ValueError('无法打开目录选择器，请手动输入路径')
+            if result.get('directory'):
+                set_directory(result['directory'])
+        except (ValueError, OSError):
+            PICKER_ERROR = '目录选择未成功，请手动输入一个可写的完整路径'
 
 def save_jobs():
     tmp = JOBS_FILE.with_suffix('.tmp')
@@ -105,7 +154,7 @@ def prepare(msg):
             options[option] = value
     rpc('addUri', [url], options)
     JOBS[gid] = {'name': name, 'dir': str(directory), 'expected': int(msg.get('expected', -1)),
-                 'path': None}
+                 'path': None, 'destination': str(DEST)}
     save_jobs()
     return {'gid': gid}
 
@@ -117,10 +166,12 @@ def publish(gid, status):
     expected = job['expected']
     if expected > 0 and source.stat().st_size != expected:
         raise RuntimeError('文件大小与 Chrome 收到的大小不一致，已保留临时文件')
-    DEST.mkdir(parents=True, exist_ok=True)
+    # Older jobs also keep their original volume: .../<destination>/.ChromeParallelDownload/<gid>.
+    destination = Path(job.get('destination', Path(job['dir']).parent.parent))
+    destination.mkdir(parents=True, exist_ok=True)
     stem, suffix = Path(job['name']).stem, Path(job['name']).suffix
     for index in range(10000):
-        target = DEST / (job['name'] if index == 0 else f'{stem} ({index}){suffix}')
+        target = destination / (job['name'] if index == 0 else f'{stem} ({index}){suffix}')
         try:
             # On Windows rename never overwrites an existing file.
             source.rename(target)
@@ -151,6 +202,7 @@ def statuses(gids):
             state = rpc('tellStatus', gid, ['gid', 'status', 'totalLength', 'completedLength',
                         'downloadSpeed', 'connections', 'errorCode'])
             state['name'] = job['name']
+            state['directory'] = job.get('destination', str(Path(job['dir']).parent.parent))
             if state['status'] == 'complete':
                 state['path'] = publish(gid, state)
             result.append(state)
@@ -195,9 +247,15 @@ def prune_history(keep):
 
 def handle(msg):
     action = msg.get('action')
+    poll_picker()
+    if action == 'set_directory':
+        return set_directory(msg.get('directory'))
+    if action == 'choose_directory':
+        return choose_directory()
     version = ensure_engine()
     if action == 'ping':
-        return {'version': version, 'directory': str(DEST)}
+        return {'version': version, 'directory': str(DEST), 'choosing': PICKER is not None,
+                'directoryError': PICKER_ERROR}
     if action == 'prepare':
         return prepare(msg)
     if action == 'status':
@@ -257,10 +315,15 @@ def main():
             response = {'id': msg.get('id'), 'ok': True, 'result': handle(msg)}
         except Exception as exc:
             # Never include request URLs, cookies or RPC secrets in errors.
-            response = {'id': msg.get('id'), 'ok': False, 'error': type(exc).__name__ + ': 操作失败'}
+            message = str(exc) if msg.get('action') in ('set_directory', 'choose_directory') and isinstance(exc, ValueError) else type(exc).__name__ + ': 操作失败'
+            response = {'id': msg.get('id'), 'ok': False, 'error': message}
         data = json.dumps(response, ensure_ascii=False).encode('utf-8')
         sys.stdout.buffer.write(struct.pack('<I', len(data)) + data)
         sys.stdout.buffer.flush()
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    finally:
+        if PICKER is not None and PICKER.poll() is None:
+            PICKER.terminate()

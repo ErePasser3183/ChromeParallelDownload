@@ -20,6 +20,7 @@ modified = bytearray(original)
 modified[offset+5] = 64
 assert sum(a != b for a, b in zip(original, modified)) == 1
 target = root / 'aria2c-local64.exe'
-target.write_bytes(modified)
+if not target.exists() or target.read_bytes() != modified:
+    target.write_bytes(modified)
 print('Local upper limit: 64; exactly one numeric constant changed.')
 print('SHA-256:', hashlib.sha256(modified).hexdigest())

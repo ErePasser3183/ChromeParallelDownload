@@ -18,8 +18,9 @@ jobs:
       - run: node --check extension/background.js
       - run: node --check extension/popup.js
       - run: node tests/test_extension.cjs
-      - run: python -m py_compile native/host.py
+      - run: python -m py_compile native/host.py native/folder_picker.py
       - run: python tests/test_history_cleanup.py
+      - run: python tests/test_directory.py
 
   local64:
     runs-on: windows-latest
@@ -29,8 +30,10 @@ jobs:
         with:
           python-version: '3.12'
       - name: Download and verify aria2 variant
-        shell: pwsh
+        shell: powershell
         run: |
           ./install.ps1 -DownloadDir "$env:RUNNER_TEMP\downloads" -SkipRegistration
           $help = & native/aria2c-local64.exe --help=max-connection-per-server
           if ($help -notmatch 'Possible Values: 1-64') { throw '64-connection limit was not applied.' }
+          ./install.ps1 -DownloadDir "$env:RUNNER_TEMP\downloads-updated" -SkipRegistration
+      - run: python tests/test_directory.py

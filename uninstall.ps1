@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $targetConfig = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'native\aria2.conf'))
 Get-CimInstance Win32_Process -Filter "Name = 'aria2c.exe' OR Name = 'aria2c-local64.exe'" | Where-Object {
     $_.CommandLine -and $_.CommandLine.Contains($targetConfig)

@@ -1,9 +1,12 @@
-param(
+﻿param(
     [string]$DownloadDir = '',
     [switch]$SkipRegistration
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not [string]::IsNullOrWhiteSpace($DownloadDir) -and -not [IO.Path]::IsPathRooted($DownloadDir)) {
+    throw '下载目录必须是绝对路径。'
+}
 $root = $PSScriptRoot
 $native = Join-Path $root 'native'
 $expectedAriaHash = 'BE2099C214F63A3CB4954B09A0BECD6E2E34660B886D4C898D260FEBFE9D70C2'
@@ -61,7 +64,7 @@ Install-Aria2
 if ($LASTEXITCODE -ne 0) { throw '生成 64 路下载引擎失败。' }
 
 $utf8 = New-Object System.Text.UTF8Encoding($false)
-$manifest = Get-Content -LiteralPath (Join-Path $root 'extension\manifest.json') -Raw | ConvertFrom-Json
+$manifest = Get-Content -LiteralPath (Join-Path $root 'extension\manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $key = [Convert]::FromBase64String($manifest.key)
 $sha = [Security.Cryptography.SHA256]::Create()
 $hash = $sha.ComputeHash($key)
@@ -82,7 +85,13 @@ if (-not (Test-Path -LiteralPath $configPath)) {
     $config = @{port=$port; secret=[Convert]::ToBase64String($secretBytes); download_dir=[IO.Path]::GetFullPath($DownloadDir)}
     [IO.File]::WriteAllText($configPath, ($config | ConvertTo-Json), $utf8)
 }
-$config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+$config = Get-Content -LiteralPath $configPath -Raw -Encoding UTF8 | ConvertFrom-Json
+if (-not [string]::IsNullOrWhiteSpace($DownloadDir)) {
+    if (-not [IO.Path]::IsPathRooted($DownloadDir)) { throw '下载目录必须是绝对路径。' }
+    $config.download_dir = [IO.Path]::GetFullPath($DownloadDir)
+    New-Item -ItemType Directory -Path $config.download_dir -Force | Out-Null
+    [IO.File]::WriteAllText($configPath, ($config | ConvertTo-Json), $utf8)
+}
 New-Item -ItemType Directory -Path $config.download_dir -Force | Out-Null
 
 $lines = @('enable-rpc=true', 'rpc-listen-all=false', 'rpc-allow-origin-all=false',
@@ -94,8 +103,8 @@ $lines = @('enable-rpc=true', 'rpc-listen-all=false', 'rpc-allow-origin-all=fals
     'enable-dht=false', 'enable-peer-exchange=false', 'follow-torrent=false', 'follow-metalink=false')
 [IO.File]::WriteAllText((Join-Path $native 'aria2.conf'), (($lines -join "`n") + "`n"), $utf8)
 
-$launcher = '@echo off' + "`r`n" + '"' + $python + '" -u "' + (Join-Path $native 'host.py') + '"' + "`r`n"
-[IO.File]::WriteAllText((Join-Path $native 'host.cmd'), $launcher, [Text.Encoding]::Default)
+$launcher = '@echo off' + "`r`nchcp 65001 >nul`r`n" + '"' + $python + '" -u "' + (Join-Path $native 'host.py') + '"' + "`r`n"
+[IO.File]::WriteAllText((Join-Path $native 'host.cmd'), $launcher, $utf8)
 $hostManifest = @{name='local.chrome_parallel_download';description='Local parallel download bridge';
     path=(Join-Path $native 'host.cmd'); type='stdio'; allowed_origins=@("chrome-extension://$id/")}
 $hostManifestPath = Join-Path $native 'host-manifest.json'

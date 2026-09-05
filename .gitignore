@@ -4,6 +4,7 @@
 /native/host-manifest.json
 /native/host.cmd
 /native/jobs.json
+/native/*.tmp
 
 # Downloaded/generated executables
 /native/aria2c.exe

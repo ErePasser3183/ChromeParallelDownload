@@ -11,6 +11,8 @@
 - 显示速度、进度和实际连接数
 - 支持暂停、继续、取消和切回 Chrome
 - 下载完成后自动清理扩展中的任务记录
+- 面板内选择文件夹或输入下载路径；正在下载的任务保留原目录
+- 外观跟随系统，也可手动选择浅色或深色
 - 同名文件自动编号，不覆盖已有文件
 - 接管失败时尽量恢复 Chrome 原下载
 - 不上传下载地址、下载记录或浏览数据
@@ -24,7 +26,7 @@
 
 ## 安装
 
-1. 下载仓库并解压到一个长期保留的目录，例如 `D:\Tools\ChromeParallelDownload`。安装后不要删除或移动它。
+1. 下载仓库并解压到一个长期保留的目录，例如 `D:\Github\ChromeParallelDownload`。安装后不要删除或移动它。
 2. 双击 `install.cmd`。脚本会下载并校验 aria2、生成本机随机 RPC 密钥，并为当前 Windows 用户注册 Native Messaging Host。
 3. 在 Chrome 地址栏输入 `chrome://extensions/`。
 4. 开启“开发者模式”，点击“加载已解压的扩展程序”。
@@ -36,6 +38,12 @@
 ```powershell
 & .\install.ps1 -DownloadDir 'E:\Downloads'
 ```
+
+安装后可在扩展面板的“下载保存目录”中点击“选择文件夹…”，或输入绝对路径并点击“保存”。手动输入的新目录会自动创建；路径支持中文和空格。选择文件夹需要 Python 自带的 Tkinter（官方 Windows 安装包通常包含），不可用时仍可手动输入。打开系统选择器时扩展面板可能收起，选择后会自动保存，再点击扩展图标即可查看。
+
+目录设置仅影响之后接管的任务，已有任务及其临时分片保留在原目录。外观默认为“跟随系统”，也可选择“浅色”或“深色”，设置会保存在本机。
+
+如果移动项目，请先完成或取消正在下载的任务，然后在新位置重新运行 `install.cmd`，并在 Chrome 移除旧扩展、加载新位置的 `extension` 文件夹。仅复制扩展文件夹不足以运行，本机桥接和引擎也需要保留。
 
 ## 使用说明
 
@@ -90,8 +98,9 @@ Chrome 与本机程序通过官方 Native Messaging 机制通信。aria2 RPC 只
 node --check extension/background.js
 node --check extension/popup.js
 node tests/test_extension.cjs
-python -m py_compile native/host.py
+python -m py_compile native/host.py native/folder_picker.py
 python tests/test_history_cleanup.py
+python tests/test_directory.py
 ```
 
 要验证完整安装流程但不修改注册表，可运行：
@@ -101,6 +110,17 @@ python tests/test_history_cleanup.py
 ```
 
 `native/build_local64.py` 基于哈希固定的 aria2 1.37.0 官方 Windows x64 文件生成 64 路变体。它校验原文件 SHA-256 与目标机器指令，只修改一个数值常量。等价源码补丁见 `native/local64-source.patch`。
+
+## 项目文件与分享
+
+`extension/` 为 Chrome 扩展，`native/` 为 Python 桥接及引擎补丁工具，`tests/` 为自动化验证，`licenses/` 为第三方许可证。根目录保留安装、卸载脚本和使用文档。安装生成的引擎、RPC 密钥配置、任务信息和 Python 缓存都已加入 `.gitignore`。
+
+分享源码时推荐通过 GitHub 仓库或 `git archive` 导出已提交文件，接收者运行 `install.cmd` 完成本机安装。不要直接压缩已经安装过的整个目录，以免包含本机密钥和下载记录。
+
+```powershell
+git remote add origin https://github.com/YOUR_NAME/YOUR_REPO.git
+git push -u origin main
+```
 
 ## 隐私与权限
 

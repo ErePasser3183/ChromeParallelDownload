@@ -86,5 +86,18 @@ function item(h,overrides={},request={}) {
     assert(!h.calls.includes('popup.open'));
   }
   assert(!/openPopup|showPanel/.test(source));
+  h=harness({enabled:false,connections:64});await run(h,'ready');
+  const message=msg=>new Promise(resolve=>h.listeners.message(msg,{id:'test'},resolve));
+  for(const theme of ['dark','light','system']) {
+    assert.equal((await message({action:'theme',theme})).ok,true);
+    assert.equal(h.store.theme,theme);
+    assert.equal(h.store.enabled,false);assert.equal(h.store.connections,64);
+  }
+  assert.equal((await message({action:'theme',theme:'unknown'})).ok,false);
+  for(const action of ['set_directory','choose_directory']) {
+    assert.equal((await message({action,directory:'D:\\Downloads'})).ok,true);
+    assert(h.calls.includes(action));
+  }
+  console.log('Theme validation/persistence and native directory routing: PASS');
   console.log('32/64 settings accepted; no automatic popup code path remains: PASS');
 })().catch(e=>{console.error(e);process.exitCode=1;});

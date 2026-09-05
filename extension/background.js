@@ -190,13 +190,20 @@ chrome.runtime.onMessage.addListener((msg, sender, respond) => {
       try { engine = await native('ping'); } catch { engine = {error: '本机程序未连接，请运行 install.ps1'}; }
       await poll();
       return {tasks: Object.values(tasks).sort((a,b) => b.created - a.created).slice(0, 100), engine,
-        settings: await chrome.storage.local.get({enabled: true, connections: 8})};
+        settings: await chrome.storage.local.get({enabled: true, connections: 8, theme: 'system'})};
     }
     if (msg.action === 'settings') {
       const connections = [4, 8, 16, 32, 64].includes(Number(msg.connections)) ? Number(msg.connections) : 8;
       await chrome.storage.local.set({enabled: !!msg.enabled, connections});
       return {};
     }
+    if (msg.action === 'theme') {
+      if (!['system', 'light', 'dark'].includes(msg.theme)) throw new Error('未知主题');
+      await chrome.storage.local.set({theme: msg.theme});
+      return {};
+    }
+    if (msg.action === 'set_directory') return native('set_directory', {directory: msg.directory});
+    if (msg.action === 'choose_directory') return native('choose_directory');
     const task = tasks[msg.gid];
     if (!task) throw new Error('任务不存在');
     if (msg.action === 'retry') {
