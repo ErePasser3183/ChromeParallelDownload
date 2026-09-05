@@ -12,9 +12,13 @@ with tempfile.TemporaryDirectory() as temp:
     states={'done':'complete','cancelled':'removed','failed':'error','live':'active',
             'paused':'paused','waiting':'waiting','unpublished':'complete','unacknowledged':'complete'}
     host.JOBS={}
-    for gid,state in states.items():
+    staging={}
+    for index,(gid,state) in enumerate(states.items()):
         path=root/(gid+'.bin');path.write_bytes(b'downloaded data');files.append(path)
-        host.JOBS[gid]={'path':str(path) if gid in ('done','unacknowledged') else None}
+        directory=root/'.ChromeParallelDownload'/f'{index:016x}';directory.mkdir(parents=True)
+        (directory/path.name).write_bytes(b'partial data');staging[gid]=directory
+        host.JOBS[gid]={'path':str(path) if gid in ('done','unacknowledged') else None,
+            'dir':str(directory),'destination':str(root),'name':path.name}
     host.JOBS_FILE=root/'jobs.json'
     removed=[]
     def rpc(method,gid,*args):
@@ -28,4 +32,6 @@ with tempfile.TemporaryDirectory() as temp:
     assert set(host.JOBS)=={'live','paused','waiting','unpublished','unacknowledged'}
     assert set(json.loads(host.JOBS_FILE.read_text()))==set(host.JOBS)
     assert all(path.read_bytes()==b'downloaded data' for path in files)
-print('Terminal metadata cleared; live/paused/waiting/completion handshake and every file preserved: PASS')
+    assert all(not staging[gid].exists() for gid in ('done','cancelled','failed'))
+    assert all(staging[gid].exists() for gid in ('live','paused','waiting','unpublished','unacknowledged'))
+print('Abandoned staging cleaned; final files, live tasks and completion handshake preserved: PASS')

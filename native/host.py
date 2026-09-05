@@ -12,6 +12,7 @@ import urllib.parse
 import uuid
 import tempfile
 import socket
+import stat
 from contextlib import contextmanager
 
 ROOT = Path(__file__).resolve().parent
@@ -224,9 +225,49 @@ def prepare(msg):
     save_jobs()
     return {'gid': gid}
 
+def cleanup_staging(job):
+    """Delete only this terminal job's exact temporary files, never recursively."""
+    try:
+        directory = Path(job['dir'])
+        name = job['name']
+        if not directory.is_absolute() or not re.fullmatch('[0-9a-f]{16}', directory.name):
+            return False
+        if name != safe_name(name):
+            return False
+        destination = Path(job.get('destination', directory.parent.parent)).resolve()
+        stage = destination / '.ChromeParallelDownload'
+        if directory.parent != stage or directory.resolve() != stage / directory.name:
+            return False
+        if stage.resolve() != stage:
+            return False
+        for path in (stage, directory):
+            if path.is_symlink() or (path.exists() and getattr(path.lstat(), 'st_file_attributes', 0) & getattr(stat, 'FILE_ATTRIBUTE_REPARSE_POINT', 0x400)):
+                return False
+        if job.get('path') and Path(job['path']).resolve().is_relative_to(directory):
+            return False
+        if directory.exists():
+            for filename in (name, name + '.aria2', name + '.aria2__temp'):
+                path = directory / filename
+                if path.is_symlink() or (path.exists() and getattr(path.lstat(), 'st_file_attributes', 0) & getattr(stat, 'FILE_ATTRIBUTE_REPARSE_POINT', 0x400)):
+                    return False
+                if path.exists():
+                    if not path.is_file():
+                        return False
+                    path.unlink()
+            directory.rmdir()
+        try:
+            stage.rmdir()  # Removes the root only when every task directory is gone.
+        except OSError:
+            pass
+        return True
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
 def publish(gid, status):
     job = JOBS[gid]
     if job['path']:
+        cleanup_staging(job)
         return job['path']
     source = Path(job['dir']) / job['name']
     expected = job['expected']
@@ -245,10 +286,7 @@ def publish(gid, status):
             continue
         job['path'] = str(target)
         save_jobs()
-        try:
-            Path(job['dir']).rmdir()
-        except OSError:
-            pass
+        cleanup_staging(job)
         return str(target)
     raise RuntimeError('同名文件过多')
 
@@ -297,6 +335,7 @@ def statuses(gids):
             result.append({'gid': gid, 'status': 'missing'})
             continue
         if job['path']:
+            cleanup_staging(job)
             result.append({'gid': gid, 'status': 'complete', 'path': job['path'],
                            'name': job['name'], 'totalLength': str(job['expected']),
                            'completedLength': str(job['expected']), 'downloadSpeed': '0'})
@@ -321,7 +360,7 @@ def statuses(gids):
     return result
 
 def prune_history(keep):
-    """Remove terminal metadata only. Downloaded and partial files are untouched."""
+    """Clean abandoned staging before dropping metadata; keep live/retryable jobs."""
     keep = set(keep)
     removed = []
     for gid, job in list(JOBS.items()):
@@ -348,6 +387,8 @@ def prune_history(keep):
         # An unpublished successful download still needs its completion handshake.
         if state == 'complete' and not job.get('path'):
             continue
+        if not cleanup_staging(job):
+            continue  # Keep metadata so a locked temporary file can be retried later.
         if state != 'missing':
             try:
                 rpc('removeDownloadResult', gid)

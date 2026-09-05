@@ -23,6 +23,7 @@ jobs:
       - run: python tests/test_directory.py
       - run: python tests/test_engine_recovery.py
       - run: python tests/test_transfer_recovery.py
+      - run: python tests/test_staging_cleanup.py
 
   local64:
     runs-on: windows-latest
@@ -41,3 +42,4 @@ jobs:
       - run: python tests/test_directory.py
       - run: python tests/test_engine_recovery.py
       - run: python tests/test_transfer_recovery.py
+      - run: python tests/test_staging_cleanup.py
