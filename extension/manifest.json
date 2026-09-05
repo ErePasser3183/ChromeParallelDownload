@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "多线程下载 · 自动接管",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "用 aria2 多线程下载普通网页文件，支持暂停和切回 Chrome。",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAn1B+vGf0QTlqQgqWh/goT4trhfZVbLb8D23oBz6AEkS9H9C/4C3san4Q9PS42QLOLr/I8F2dLIneJX8IwnJcRXSApbEHSaRY+nTM47MKfe+khxIDF4MLxcXoVUd3mERsQG9u8H+qWImR92RyZg5f4JwPpfYY/vj6pf9LchoywrdfmruBxidt2mzh31eABSUI0mdGa9G+/u9x9ji8rC94Fm9/zSbCqKq/RHIdAJ13TAurgq4RGE4VNeXAIOr0lDk7eJDi9PHXyy9HOARYHxuwcM6WBn+twNo+im8BXC1pNUTczopIBU6r8DnwLFrEk5nNJRAdiU2btjM0DGANzcOzcQIDAQAB",
   "permissions": [

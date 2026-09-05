@@ -53,6 +53,8 @@
 
 连接数越高不一定越快。建议从 8 或 16 路开始；只有服务器限制单连接速度时，32/64 路才可能继续提升速度。某些服务器会限制或拒绝过多连接。
 
+遇到服务器提前断开、超时或已识别的临时 TLS 握手故障时，扩展会保留已有分片并自动断点重试，最多 3 次。第一次重试保持连接数，反复失败时再降低连接数，并在任务卡片提示。无法安全恢复或重试耗尽时尝试切回 Chrome。证书验证始终开启。
+
 以下任务保留给 Chrome：
 
 - 小于 2 MiB 的文件
@@ -104,6 +106,7 @@ python -m py_compile native/host.py native/folder_picker.py
 python tests/test_history_cleanup.py
 python tests/test_directory.py
 python tests/test_engine_recovery.py
+python tests/test_transfer_recovery.py
 ```
 
 要验证完整安装流程但不修改注册表，可运行：

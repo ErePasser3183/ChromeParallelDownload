@@ -38,8 +38,8 @@ async function update() {
       const connecting=t.status==='active'&&!Number(t.completedLength)&&!Number(t.downloadSpeed);
       const meta=el('div','meta','');meta.append(el('span','',connecting?'正在连接服务器…':labels[t.status]||t.status),el('span','', t.status==='active'&&!connecting?bytes(t.downloadSpeed)+'/s · '+(t.connections||0)+' 路':''));card.append(meta);
       const progress=document.createElement('progress');progress.max=Math.max(1,Number(t.totalLength)||1);progress.value=t.status==='complete'?progress.max:Number(t.completedLength)||0;card.append(progress);
+      card.append(el('p','note',bytes(t.completedLength)+' / '+bytes(t.totalLength)));
       if(t.note||t.path) card.append(el('p','note',t.path||t.note));
-      else card.append(el('p','note',bytes(t.completedLength)+' / '+bytes(t.totalLength)));
       if (t.directory && t.directory !== data.engine.directory) card.append(el('p','note','保存到 '+t.directory));
       const actions=el('div','actions','');
       const add=(label,action)=>{const b=el('button','',label);b.onclick=async()=>{b.disabled=true;try{await call(action,{gid:t.gid});$('error').textContent='';await update();}catch(e){$('error').textContent=e.message;}finally{b.disabled=false;}};actions.append(b);};

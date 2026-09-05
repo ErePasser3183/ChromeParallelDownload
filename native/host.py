@@ -81,8 +81,18 @@ def rpc(method, *args, timeout=4):
                        'params': ['token:' + CONFIG['secret'], *args]}).encode()
     req = urllib.request.Request(f"http://127.0.0.1:{CONFIG['port']}/jsonrpc", body,
                                  {'Content-Type': 'application/json'})
-    with OPENER.open(req, timeout=timeout) as response:
-        result = json.load(response)
+    try:
+        with OPENER.open(req, timeout=timeout) as response:
+            result = json.load(response)
+    except urllib.error.HTTPError as exc:
+        # aria2 also sends valid JSON-RPC errors with HTTP 400. Normalize them
+        # so terminal/missing tasks can complete the Chrome fallback handshake.
+        try:
+            result = json.load(exc)
+        except (ValueError, OSError):
+            raise exc
+        if not isinstance(result, dict) or 'error' not in result:
+            raise exc
     if 'error' in result:
         raise RuntimeError(result['error']['message'])
     return result['result']
@@ -184,7 +194,7 @@ def prepare(msg):
     options = {'gid': gid, 'dir': str(directory), 'out': name, 'pause': 'true',
                'split': str(max(1, min(64, int(msg.get('connections', 8))))),
                'max-connection-per-server': str(max(1, min(64, int(msg.get('connections', 8))))),
-               'max-redirect': '0', 'auto-file-renaming': 'false', 'allow-overwrite': 'false'}
+               'auto-file-renaming': 'false', 'allow-overwrite': 'false'}
     if urllib.parse.urlsplit(url).hostname not in ('localhost', '127.0.0.1', '::1'):
         # Match the Windows explicit proxy when one is configured; PAC remains Chrome-only.
         try:
@@ -242,6 +252,43 @@ def publish(gid, status):
         return str(target)
     raise RuntimeError('同名文件过多')
 
+def retry_transfer(gid, state):
+    """Retry transient transport failures using the existing aria2 control file."""
+    job = JOBS[gid]
+    message = state.get('errorMessage', '').lower()
+    transient = state.get('errorCode') == '2' or (
+        state.get('errorCode') == '1' and (
+            'got eof from the server' in message or
+            ('ssl/tls handshake failure' in message and '(0)' in message)))
+    if not transient or job.get('retries', 0) >= 3:
+        return False
+    control = Path(job['dir']) / (job['name'] + '.aria2')
+    if int(state.get('completedLength', 0)) > 0 and not control.is_file():
+        return False
+    options = rpc('getOption', gid)
+    files = rpc('getFiles', gid)
+    urls = list(dict.fromkeys(uri['uri'] for file in files for uri in file.get('uris', [])))
+    if not urls:
+        return False
+    for url in urls:
+        validate_url(url)
+    connections = max(1, int(options.get('split', 8)))
+    if job.get('retries', 0) > 0:
+        connections = max(1, connections // 2)
+    options.update({'gid': gid, 'pause': 'true', 'continue': 'true',
+                    'split': str(connections), 'max-connection-per-server': str(connections),
+                    'dir': job['dir'], 'out': job['name'], 'auto-file-renaming': 'false',
+                    'allow-overwrite': 'false'})
+    job['retries'] = job.get('retries', 0) + 1
+    job['note'] = f'连接中断，正从已有分片重试（{job["retries"]}/3），当前 {connections} 路'
+    save_jobs()
+    # Removing an aria2 result does not delete the partial file or control file.
+    rpc('removeDownloadResult', gid)
+    rpc('addUri', urls, options)
+    rpc('unpause', gid)
+    return True
+
+
 def statuses(gids):
     result = []
     for gid in gids[:100]:
@@ -256,8 +303,15 @@ def statuses(gids):
             continue
         try:
             state = rpc('tellStatus', gid, ['gid', 'status', 'totalLength', 'completedLength',
-                        'downloadSpeed', 'connections', 'errorCode'])
+                        'downloadSpeed', 'connections', 'errorCode', 'errorMessage'])
+            if state['status'] == 'error' and retry_transfer(gid, state):
+                state = rpc('tellStatus', gid, ['gid', 'status', 'totalLength', 'completedLength',
+                            'downloadSpeed', 'connections', 'errorCode'])
+            # URLs and server diagnostics stay inside the native host.
+            state.pop('errorMessage', None)
             state['name'] = job['name']
+            if job.get('note'):
+                state['note'] = job['note']
             state['directory'] = job.get('destination', str(Path(job['dir']).parent.parent))
             if state['status'] == 'complete':
                 state['path'] = publish(gid, state)
@@ -283,7 +337,11 @@ def prune_history(keep):
             if 'not found' not in message.lower():
                 continue
             state = 'missing'
-        except (OSError, RuntimeError):
+        except RuntimeError as exc:
+            if 'not found' not in str(exc).lower():
+                continue
+            state = 'missing'
+        except OSError:
             continue
         if state not in ('complete', 'removed', 'error', 'missing'):
             continue
@@ -323,7 +381,14 @@ def handle(msg):
         try:
             rpc('forceRemove', gid)
         except RuntimeError:
-            pass  # A finished/missing task cannot continue transferring.
+            try:
+                state = rpc('tellStatus', gid, ['status'])['status']
+            except RuntimeError as exc:
+                if 'not found' not in str(exc).lower():
+                    raise
+            else:
+                if state not in ('complete', 'removed', 'error'):
+                    raise RuntimeError('下载任务仍在运行，无法确认取消')
         return {'gid': gid}
     if gid not in JOBS:
         raise ValueError('任务不存在')
