@@ -11,6 +11,8 @@ import urllib.request
 import urllib.parse
 import uuid
 import tempfile
+import socket
+from contextlib import contextmanager
 
 ROOT = Path(__file__).resolve().parent
 CONFIG_FILE = Path(os.environ.get('CHROME_PARALLEL_DOWNLOAD_CONFIG', ROOT / 'config.json'))
@@ -74,31 +76,85 @@ def save_jobs():
     tmp.write_text(json.dumps(JOBS, ensure_ascii=False), encoding='utf-8')
     tmp.replace(JOBS_FILE)
 
-def rpc(method, *args):
+def rpc(method, *args, timeout=4):
     body = json.dumps({'jsonrpc': '2.0', 'id': 'bridge', 'method': 'aria2.' + method,
                        'params': ['token:' + CONFIG['secret'], *args]}).encode()
     req = urllib.request.Request(f"http://127.0.0.1:{CONFIG['port']}/jsonrpc", body,
                                  {'Content-Type': 'application/json'})
-    with OPENER.open(req, timeout=4) as response:
+    with OPENER.open(req, timeout=timeout) as response:
         result = json.load(response)
     if 'error' in result:
         raise RuntimeError(result['error']['message'])
     return result['result']
 
-def ensure_engine():
+@contextmanager
+def engine_start_lock():
+    # Native hosts can overlap while Chrome reconnects. Only one may start aria2.
+    with (ROOT / 'engine-start.lock').open('a+b') as lock:
+        if lock.seek(0, 2) == 0:
+            lock.write(b'0')
+            lock.flush()
+        lock.seek(0)
+        if os.name == 'nt':
+            import msvcrt
+            acquire = lambda: msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+            release = lambda: msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            acquire = lambda: fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            release = lambda: fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+        try:
+            acquire()
+        except OSError as exc:
+            raise RuntimeError('下载引擎正在启动，请稍后重试') from exc
+        try:
+            yield
+        finally:
+            release()
+
+
+def engine_port_open():
     try:
-        return rpc('getVersion')['version']
-    except (OSError, RuntimeError):
-        subprocess.Popen([str(ROOT / 'aria2c-local64.exe'), '--conf-path=' + str(ROOT / 'aria2.conf')],
-                         cwd=ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
-        for _ in range(40):
+        with socket.create_connection(('127.0.0.1', CONFIG['port']), timeout=0.3):
+            return True
+    except OSError:
+        return False
+
+
+def ensure_engine():
+    # Keep recovery below Chrome's 15-second Native Messaging timeout.
+    deadline = time.monotonic() + 7
+    for _ in range(2):
+        try:
+            return rpc('getVersion', timeout=1)['version']
+        except (OSError, RuntimeError):
             time.sleep(0.1)
-            try:
-                return rpc('getVersion')['version']
-            except (OSError, RuntimeError):
-                pass
-        raise RuntimeError('下载引擎启动失败，请重新运行 install.ps1')
+    with engine_start_lock():
+        # An occupied port may mean a busy engine or a different installation.
+        # Starting another process would not repair either situation.
+        if engine_port_open():
+            raise RuntimeError('下载引擎暂时无法响应，请稍后重试')
+        process = subprocess.Popen([str(ROOT / 'aria2c-local64.exe'), '--conf-path=' + str(ROOT / 'aria2.conf')],
+            cwd=ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW)
+        try:
+            while time.monotonic() < deadline:
+                if process.poll() is not None:
+                    break
+                try:
+                    return rpc('getVersion', timeout=min(1, max(0.1, deadline - time.monotonic())))['version']
+                except (OSError, RuntimeError):
+                    time.sleep(0.1)
+            raise RuntimeError('下载引擎启动失败，请重新运行 install.ps1')
+        except Exception:
+            # Reap only the process this call started, never an existing engine.
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=0.5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+            raise
 
 def safe_name(raw):
     name = re.split(r'[/\\]', str(raw))[-1]

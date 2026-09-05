@@ -5,6 +5,7 @@
 /native/host.cmd
 /native/jobs.json
 /native/*.tmp
+/native/engine-start.lock
 
 # Downloaded/generated executables
 /native/aria2c.exe

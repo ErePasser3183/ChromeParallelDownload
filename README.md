@@ -45,6 +45,8 @@
 
 如果移动项目，请先完成或取消正在下载的任务，然后在新位置重新运行 `install.cmd`，并在 Chrome 移除旧扩展、加载新位置的 `extension` 文件夹。仅复制扩展文件夹不足以运行，本机桥接和引擎也需要保留。
 
+同一 Windows 用户的新旧副本使用相同的扩展 ID 和 Native Messaging 注册名称，只能选择一份作为当前安装；后运行的安装脚本会覆盖注册路径。不要把两个副本当作独立扩展同时使用。对比源码可直接比较目录或 Git 提交；运行对比时，先结束下载并完全退出 Chrome，再运行目标版本的安装脚本、重新打开 Chrome 并加载对应目录，避免旧桥接进程仍驻留。
+
 ## 使用说明
 
 网页下载被接管后，Chrome 原任务会显示“暂停”，这是作为失败回退保留的备份任务。请在扩展面板查看多线程进度；如果在 Chrome 原任务中点击“继续”，下载会切回 Chrome。
@@ -101,6 +103,7 @@ node tests/test_extension.cjs
 python -m py_compile native/host.py native/folder_picker.py
 python tests/test_history_cleanup.py
 python tests/test_directory.py
+python tests/test_engine_recovery.py
 ```
 
 要验证完整安装流程但不修改注册表，可运行：
