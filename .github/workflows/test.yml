@@ -1,0 +1,36 @@
+name: Test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  logic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: node --check extension/background.js
+      - run: node --check extension/popup.js
+      - run: node tests/test_extension.cjs
+      - run: python -m py_compile native/host.py
+      - run: python tests/test_history_cleanup.py
+
+  local64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download and verify aria2 variant
+        shell: pwsh
+        run: |
+          ./install.ps1 -DownloadDir "$env:RUNNER_TEMP\downloads" -SkipRegistration
+          $help = & native/aria2c-local64.exe --help=max-connection-per-server
+          if ($help -notmatch 'Possible Values: 1-64') { throw '64-connection limit was not applied.' }

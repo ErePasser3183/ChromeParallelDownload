@@ -1,0 +1,22 @@
+# Per-machine configuration and task state
+/native/config.json
+/native/aria2.conf
+/native/host-manifest.json
+/native/host.cmd
+/native/jobs.json
+
+# Downloaded/generated executables
+/native/aria2c.exe
+/native/aria2c-local64.exe
+
+# Python and test output
+__pycache__/
+*.py[cod]
+/work/
+/.pytest_cache/
+
+# Editors and operating systems
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
