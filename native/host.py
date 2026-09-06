@@ -235,15 +235,17 @@ def cleanup_staging(job):
         if name != safe_name(name):
             return False
         destination = Path(job.get('destination', directory.parent.parent)).resolve()
-        stage = destination / '.ChromeParallelDownload'
-        if directory.parent != stage or directory.resolve() != stage / directory.name:
+        raw_stage = destination / '.ChromeParallelDownload'
+        stage = raw_stage.resolve()
+        canonical_directory = directory.resolve()
+        if canonical_directory.parent != stage or canonical_directory != (stage / directory.name).resolve():
             return False
-        if stage.resolve() != stage:
+        if raw_stage.is_symlink():
             return False
-        for path in (stage, directory):
+        for path in (raw_stage, directory):
             if path.is_symlink() or (path.exists() and getattr(path.lstat(), 'st_file_attributes', 0) & getattr(stat, 'FILE_ATTRIBUTE_REPARSE_POINT', 0x400)):
                 return False
-        if job.get('path') and Path(job['path']).resolve().is_relative_to(directory):
+        if job.get('path') and Path(job['path']).resolve().is_relative_to(canonical_directory):
             return False
         if directory.exists():
             for filename in (name, name + '.aria2', name + '.aria2__temp'):
