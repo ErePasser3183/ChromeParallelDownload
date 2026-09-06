@@ -66,11 +66,11 @@ with tempfile.TemporaryDirectory() as temp:
         process.communicate.return_value = (json.dumps({'directory': str(root / 'chosen')}), '')
         host.poll_picker()
         assert host.PICKER is None
-        assert host.DEST == root / 'chosen'
+        assert host.DEST.resolve() == (root / 'chosen').resolve()
     process.communicate.return_value = ('{"directory":""}', '')
     host.PICKER = process
     host.poll_picker()
-    assert host.DEST == root / 'chosen'
+    assert host.DEST.resolve() == (root / 'chosen').resolve()
     process.returncode = 1
     host.PICKER = process
     host.poll_picker()
