@@ -37,7 +37,7 @@ with tempfile.TemporaryDirectory() as temp:
         assert published.parent.resolve() == destination.resolve()
         assert published.read_bytes() == b'data'
     saved = config.read_text(encoding='utf-8')
-    assert json.loads(saved)['download_dir'] == str(selected)
+    assert Path(json.loads(saved)['download_dir']).resolve() == selected.resolve()
     assert json.loads(saved)['secret'] == 'test-only'
     for invalid in ['', None, 'relative/folder', str(config)]:
         try:

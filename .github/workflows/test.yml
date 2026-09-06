@@ -54,9 +54,6 @@ jobs:
 
   local64:
     runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: legacy/native-1.x
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
