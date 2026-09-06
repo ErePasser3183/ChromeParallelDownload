@@ -66,8 +66,10 @@ jobs:
         shell: powershell
         run: |
           ./install.ps1 -DownloadDir "$env:RUNNER_TEMP\downloads" -SkipRegistration
-          $help = & native/aria2c-local64.exe --help=max-connection-per-server
-          if ($help -notmatch 'Possible Values: 1-64') { throw '64-connection limit was not applied.' }
+          # aria2 writes its help text to stderr on Windows; merge both streams
+          # before checking the patched 64-connection limit.
+          $help = (& native/aria2c-local64.exe --help=max-connection-per-server 2>&1 | Out-String)
+          if ($help -notmatch 'Possible Values:\s*1-64') { throw '64-connection limit was not applied.' }
           ./install.ps1 -DownloadDir "$env:RUNNER_TEMP\downloads-updated" -SkipRegistration
       - run: python tests/test_directory.py
       - run: python tests/test_engine_recovery.py

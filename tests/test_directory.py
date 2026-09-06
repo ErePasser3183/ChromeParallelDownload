@@ -28,11 +28,13 @@ with tempfile.TemporaryDirectory() as temp:
     selected = root / '中文 下载目录'
     host.set_directory(str(selected))
     second = prepare('c' * 16)
-    assert Path(first['destination']) == root / 'old'
-    assert Path(second['destination']) == selected
+    # Windows runners may normalize the temporary path's case or junctions
+    # when host.py calls Path.resolve(); compare canonical paths on both sides.
+    assert Path(first['destination']).resolve() == (root / 'old').resolve()
+    assert Path(second['destination']).resolve() == selected.resolve()
     for gid, destination in [('a' * 16, root / 'old'), ('b' * 16, root / 'old'), ('c' * 16, selected)]:
         published = Path(host.publish(gid, {}))
-        assert published.parent == destination
+        assert published.parent.resolve() == destination.resolve()
         assert published.read_bytes() == b'data'
     saved = config.read_text(encoding='utf-8')
     assert json.loads(saved)['download_dir'] == str(selected)
