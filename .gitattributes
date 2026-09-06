@@ -16,3 +16,4 @@
 
 # Keep upstream license files byte-for-byte.
 licenses/* -text
+legacy/native-1.x/licenses/* -text

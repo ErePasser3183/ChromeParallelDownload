@@ -1,0 +1,14 @@
+{
+  "name": "chrome-parallel-download",
+  "version": "2.1.1",
+  "private": true,
+  "description": "Chrome 多线程下载扩展",
+  "license": "MIT",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "check": "node scripts/check.cjs",
+    "test": "node tests/test_extension.cjs && node tests/test_extension.cjs --feedback && node tests/feedback.cjs",
+    "test:browser": "node tests/browser.cjs",
+    "package": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package.ps1"
+  }
+}

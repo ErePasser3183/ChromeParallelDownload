@@ -1,144 +1,34 @@
-# Chrome Parallel Download
+# 多线程下载
 
-一个面向 Windows 的 Chrome 多线程下载扩展。点击网页下载后，扩展暂停 Chrome 原任务，并交给本机 aria2 引擎进行分段并发下载。
+当前版本 2.1.1：恢复 1.x 的 aria2 下载机制和默认速度显示，保留新版面板、点击即时反馈、横排按钮和 8 秒圆环倒计时。支持 4/8/16/32/64 路、暂停继续、失败回退和临时文件清理。
 
-> 本项目参考了 Plain Craft Launcher 2 的多线程下载体验，采用独立实现和 aria2 引擎；它不是 PCL 官方项目，也没有复制 PCL 工具箱未公开的源码。
+## 安装与切换
 
-## 功能
+1. 完成或取消旧扩展的下载，关闭旧扩展的自动接管。
+2. 在 Windows 安装 Python 3，运行本仓库的 `install.cmd`。
+3. 在 `chrome://extensions/` 开启开发者模式，加载仓库的 `extension` 文件夹。
+4. 面板显示“aria2 1.37.0 · 已连接”后，在设置中确认保存目录，并刷新下载网页。
 
-- 自动接管普通 HTTP/HTTPS GET 文件下载
-- 每个文件可选 4、8、16、32 或 64 路连接
-- 显示速度、进度和实际连接数
-- 支持暂停、继续、取消和切回 Chrome
-- 下载完成后自动清理扩展中的任务记录
-- 完成、取消或最终切回 Chrome 后自动删除该任务的临时文件；最后一个任务结束后移除空的临时目录
-- 面板内选择文件夹或输入下载路径；正在下载的任务保留原目录
-- 外观跟随系统，也可手动选择浅色或深色
-- 同名文件自动编号，不覆盖已有文件
-- 接管失败时尽量恢复 Chrome 原下载
-- 不上传下载地址、下载记录或浏览数据
+本版使用固定扩展 ID，与 2.0.x 的路径 ID 不同。请关闭或移除旧 2.0.x 扩展，避免重复接管。原有下载分片不能跨引擎迁移。目录搬动后需重新运行安装脚本。
 
-## 系统要求
+## 工程结构
 
-- Windows 10 或 Windows 11
-- Google Chrome
-- Python 3
-- 首次安装时可以连接 GitHub，用于下载 aria2 1.37.0 官方发布文件
+- `extension/`：Chrome 扩展源码，浏览器加载这里。
+- `native/`：1.x Python 桥接与 aria2 引擎工具；配置和二进制不提交 Git。
+- `tests/`、`scripts/`、`docs/`：测试、打包与使用文档。
+- `legacy/native-1.x/`、`legacy/browser-2.x/`：历史原生版与纯浏览器版备份。
+- `dist/`、`work/`：发布产物与本地测试数据，不提交 Git。
 
-## 安装
+## 开发
 
-1. 下载仓库并解压到一个长期保留的目录，例如 `D:\Github\ChromeParallelDownload`。安装后不要删除或移动它。
-2. 双击 `install.cmd`。脚本会下载并校验 aria2、生成本机随机 RPC 密钥，并为当前 Windows 用户注册 Native Messaging Host。
-3. 在 Chrome 地址栏输入 `chrome://extensions/`。
-4. 开启“开发者模式”，点击“加载已解压的扩展程序”。
-5. 选择项目中的 `extension` 文件夹。
-6. 打开扩展面板，看到“aria2 1.37.0 · 已连接”即安装成功。
-
-默认下载目录是 `D:\Downloads`；没有 D 盘时使用当前用户的 `Downloads`。也可以在 PowerShell 中指定：
-
-```powershell
-& .\install.ps1 -DownloadDir 'E:\Downloads'
+```sh
+npm run check
+npm test
+npm run package
 ```
 
-安装后可在扩展面板的“下载保存目录”中点击“选择文件夹…”，或输入绝对路径并点击“保存”。手动输入的新目录会自动创建；路径支持中文和空格。选择文件夹需要 Python 自带的 Tkinter（官方 Windows 安装包通常包含），不可用时仍可手动输入。打开系统选择器时扩展面板可能收起，选择后会自动保存，再点击扩展图标即可查看。
+打包生成 `dist/ChromeParallelDownload-2.1.0.zip`，包含扩展、桥接源码、安装脚本和许可证。解压后运行安装脚本，再加载其中的 extension。不会打包本机密钥或任务记录。
 
-目录设置仅影响之后接管的任务，已有任务及其临时分片保留在原目录。外观默认为“跟随系统”，也可选择“浅色”或“深色”，设置会保存在本机。
+Python 回归测试位于 tests/test_*.py。真实浏览器测试需要 Playwright、Chrome for Testing，以及已注册的本机桥接；执行 `npm run test:browser`。测试使用隔离的下载目录、RPC 端口和浏览器配置。
 
-如果移动项目，请先完成或取消正在下载的任务，然后在新位置重新运行 `install.cmd`，并在 Chrome 移除旧扩展、加载新位置的 `extension` 文件夹。仅复制扩展文件夹不足以运行，本机桥接和引擎也需要保留。
-
-同一 Windows 用户的新旧副本使用相同的扩展 ID 和 Native Messaging 注册名称，只能选择一份作为当前安装；后运行的安装脚本会覆盖注册路径。不要把两个副本当作独立扩展同时使用。对比源码可直接比较目录或 Git 提交；运行对比时，先结束下载并完全退出 Chrome，再运行目标版本的安装脚本、重新打开 Chrome 并加载对应目录，避免旧桥接进程仍驻留。
-
-## 使用说明
-
-网页下载被接管后，Chrome 原任务会显示“暂停”，这是作为失败回退保留的备份任务。请在扩展面板查看多线程进度；如果在 Chrome 原任务中点击“继续”，下载会切回 Chrome。
-
-连接数越高不一定越快。建议从 8 或 16 路开始；只有服务器限制单连接速度时，32/64 路才可能继续提升速度。某些服务器会限制或拒绝过多连接。
-
-遇到服务器提前断开、超时或已识别的临时 TLS 握手故障时，扩展会保留已有分片并自动断点重试，最多 3 次。第一次重试保持连接数，反复失败时再降低连接数，并在任务卡片提示。无法安全恢复或重试耗尽时尝试切回 Chrome。证书验证始终开启。
-
-下载目录下的 `.ChromeParallelDownload` 是临时分片目录，不是历史记录。正在下载、排队、暂停或自动重试的任务会保留分片；成功保存完整文件后，或者取消、最终切回 Chrome 后，自动清理对应分片及 `.aria2` 续传文件。没有其他任务时会删除空的 `.ChromeParallelDownload` 目录，下次下载自动重建。临时文件被占用时会稍后重试清理，正式下载文件不受影响。
-
-以下任务保留给 Chrome：
-
-- 小于 2 MiB 的文件
-- 带 Cookie、Authorization 或代理认证的请求
-- POST、`blob:`、`data:` 等网页生成下载
-- 无痕窗口下载
-- Chrome 标记为风险的下载
-- 其他扩展发起的下载
-
-## 工作方式
-
-```text
-网页下载
-   │
-   ├─ 不符合接管条件 ──────────────> Chrome 下载
-   │
-   └─ 符合条件
-        │
-        ├─ Chrome 原任务暂停（回退用）
-        └─ Native Messaging → Python 桥接 → aria2 分段下载
-                                      │
-                         成功 ────────┴──────── 失败
-                          │                       │
-                    文件移入下载目录        尝试恢复 Chrome
-```
-
-Chrome 与本机程序通过官方 Native Messaging 机制通信。aria2 RPC 只监听回环地址，并使用每台电脑首次安装时生成的随机密钥。
-
-## 卸载
-
-1. 在 Chrome 扩展页移除本扩展。
-2. 运行：
-
-```powershell
-& .\uninstall.ps1
-```
-
-卸载脚本会停止本项目的下载引擎并注销本机桥接，不删除已下载文件。
-
-## 开发与测试
-
-扩展使用 Manifest V3，无构建步骤。修改 `extension` 中的文件后，在 `chrome://extensions/` 刷新扩展。
-
-```powershell
-node --check extension/background.js
-node --check extension/popup.js
-node tests/test_extension.cjs
-python -m py_compile native/host.py native/folder_picker.py
-python tests/test_history_cleanup.py
-python tests/test_directory.py
-python tests/test_engine_recovery.py
-python tests/test_transfer_recovery.py
-python tests/test_staging_cleanup.py
-```
-
-要验证完整安装流程但不修改注册表，可运行：
-
-```powershell
-& .\install.ps1 -DownloadDir "$env:TEMP\ChromeParallelDownload-Test" -SkipRegistration
-```
-
-`native/build_local64.py` 基于哈希固定的 aria2 1.37.0 官方 Windows x64 文件生成 64 路变体。它校验原文件 SHA-256 与目标机器指令，只修改一个数值常量。等价源码补丁见 `native/local64-source.patch`。
-
-## 项目文件与分享
-
-`extension/` 为 Chrome 扩展，`native/` 为 Python 桥接及引擎补丁工具，`tests/` 为自动化验证，`licenses/` 为第三方许可证。根目录保留安装、卸载脚本和使用文档。安装生成的引擎、RPC 密钥配置、任务信息和 Python 缓存都已加入 `.gitignore`。
-
-分享源码时推荐通过 GitHub 仓库或 `git archive` 导出已提交文件，接收者运行 `install.cmd` 完成本机安装。不要直接压缩已经安装过的整个目录，以免包含本机密钥和下载记录。
-
-```powershell
-git remote add origin https://github.com/YOUR_NAME/YOUR_REPO.git
-git push -u origin main
-```
-
-## 隐私与权限
-
-扩展需要 `downloads`、`nativeMessaging`、`storage`、`alarms` 和 `webRequest` 权限。`webRequest` 只用于识别下载请求类型并读取 User-Agent/Referer；检测到 Cookie 或认证头时不会接管。项目不包含遥测、广告或远程控制服务。
-
-## 致谢与许可证
-
-- 下载引擎：[aria2 1.37.0](https://github.com/aria2/aria2/tree/release-1.37.0)，GPL-2.0-or-later；详见 [第三方组件说明](THIRD_PARTY_NOTICES.md)。
-- 体验参考：[Plain Craft Launcher 2](https://github.com/Meloong-Git/PCL) 的公开下载模块。
-
-本项目自身代码使用 [MIT License](LICENSE)。aria2 及其本地变体遵循 aria2 自身许可证。
+详见 [使用说明](docs/USAGE.md) 与 [第三方组件说明](THIRD_PARTY_NOTICES.md)。本项目代码采用 [MIT License](LICENSE)，aria2 遵循其自身许可证。

@@ -1,4 +1,14 @@
 # Per-machine configuration and task state
+/legacy/native-1.x/native/config.json
+/legacy/native-1.x/native/aria2.conf
+/legacy/native-1.x/native/host-manifest.json
+/legacy/native-1.x/native/host.cmd
+/legacy/native-1.x/native/jobs.json
+/legacy/native-1.x/native/*.tmp
+/legacy/native-1.x/native/engine-start.lock
+/legacy/native-1.x/native/*.exe
+/dist/
+/node_modules/
 /native/config.json
 /native/aria2.conf
 /native/host-manifest.json

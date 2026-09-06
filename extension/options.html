@@ -1,0 +1,8 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>设置下载文件夹</title><link rel="stylesheet" href="ui.css"></head>
+<body class="options"><header><span class="logo">↓</span><div><h1>下载，少等一步</h1><p>多线程下载</p></div></header>
+<main><h2>下载保存位置</h2><p>使用 aria2 下载引擎。首次使用或移动工程后，请运行工程目录中的 install.cmd。</p>
+<p><label>下载文件夹 <input id="directory" type="text" placeholder="输入文件夹的完整路径" style="width:100%;box-sizing:border-box;padding:10px;margin-top:8px"></label></p>
+<button class="primary" id="choose">选择文件夹</button> <button id="save">保存路径</button><p id="status" role="status">正在检查…</p>
+<p>目录设置只影响新任务，已有任务继续保存到原位置。</p><p>网页提示保留点击反馈、横排按钮和 8 秒圆环倒计时。下载完成或取消后自动清理任务与临时分片。</p>
+<p>同时只开启一个下载接管扩展。切换引擎前，请先完成或取消原有任务。</p></main>
+<script src="options.js"></script></body></html>

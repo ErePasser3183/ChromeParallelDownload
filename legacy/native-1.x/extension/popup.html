@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>多线程下载</title><link rel="stylesheet" href="popup.css"></head>
+<body><header><span class="logo">↓</span><div><h1>多线程下载</h1><p>点击下载，自动接管</p></div><label class="toggle"><input type="checkbox" id="enabled">自动接管</label></header>
+<section class="settings"><label>并发连接 <select id="connections"><option value="4">4 路</option><option value="8">8 路</option><option value="16">16 路</option><option value="32">32 路</option><option value="64">64 路</option></select></label><span id="engine">正在连接…</span></section>
+<section class="preferences">
+  <label class="theme-row">外观 <select id="theme"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label>
+  <form id="directory-form">
+    <label for="directory">下载保存目录</label>
+    <div class="directory-row"><input id="directory" type="text" spellcheck="false" placeholder="输入完整文件夹路径"><button type="submit" id="save-directory">保存</button></div>
+    <div class="directory-controls"><span id="directory-status" role="status">仅影响新下载任务</span><button type="button" id="choose-directory">选择文件夹…</button></div>
+  </form>
+</section>
+<aside class="handoff-tip"><strong>多线程进度看这里</strong><br>Chrome 原任务显示“暂停”是正常的。<br>在 Chrome 点“继续”，就会切回原来的下载方式。</aside><p id="error" role="alert"></p><main id="tasks"></main>
+<footer>小于 2 MB、登录验证、表单及网页生成文件由 Chrome 下载。<br>接管任务请在此处查看；关闭自动接管只影响新下载。</footer>
+<script src="popup.js"></script></body></html>

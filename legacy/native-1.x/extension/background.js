@@ -4,20 +4,12 @@ const pending = new Map();
 const active = new Set();
 let port, nextId = 0, polling = false;
 let tasks = {};
-let engineCache = {connecting: true}, engineCheck, engineCheckedAt = 0;
+let engineCache = {connecting: true}, engineCheck;
 function refreshEngine() {
-  if (!engineCheck && Date.now()-engineCheckedAt<1000) return Promise.resolve();
   if (!engineCheck) engineCheck = native('ping').then(result => {engineCache = result;}, () => {
-    engineCache = {error: '本机程序未连接，请运行工程目录中的 install.cmd'};
-  }).finally(() => {engineCheck = null;engineCheckedAt=Date.now();});
+    engineCache = {error: '本机程序未连接，请检查安装'};
+  }).finally(() => {engineCheck = null;});
   return engineCheck;
-}
-function directoryStatus() {
-  void refreshEngine();
-  return {ready:!!engineCache.directory&&!engineCache.error,name:engineCache.directory||'',note:engineCache.error||(engineCache.connecting?'正在连接下载引擎，请稍候；首次使用需要运行 install.cmd。':engineCache.directoryError||'尚未设置下载文件夹，请打开设置选择。')};
-}
-async function feedback(tabId,text,chooseDirectory=false) {
-  if(tabId>=0)await chrome.tabs.sendMessage(tabId,{type:'download-feedback',text,chooseDirectory}).catch(()=>{});
 }
 const terminal = new Set(['complete', 'fallback', 'cancelled', 'superseded']);
 let cleaning = false;
@@ -113,13 +105,13 @@ async function intercept(item, retryOf = null) {
   }
   active.add(item.id);
   const gid = Array.from(crypto.getRandomValues(new Uint8Array(8)), b => b.toString(16).padStart(2, '0')).join('');
-  const task = {gid, chromeId: item.id, tabId:request.tabId, name: item.filename.split(/[\\/]/).pop() || 'download.bin',
+  const task = {gid, chromeId: item.id, name: item.filename.split(/[\\/]/).pop() || 'download.bin',
     status: 'preparing', created: Date.now(), totalLength: item.totalBytes, completedLength: 0};
   try {
     tasks[gid] = task;
     await persist();
     if (request.tabId >= 0) void chrome.tabs.sendMessage(request.tabId, {type:'download-feedback',text:'下载已接收，正在连接…'}).catch(() => {});
-    engineCache=await native('ping');engineCheckedAt=Date.now();
+    await native('ping');
     if (!item.paused) await chrome.downloads.pause(item.id);
     const [current] = await chrome.downloads.search({id: item.id});
     if (!current || current.state !== 'in_progress' || !current.paused) throw new Error('下载状态已改变');
@@ -139,8 +131,6 @@ async function intercept(item, retryOf = null) {
     await persist();
   } catch (error) {
     task.note = '接管失败，Chrome 继续下载';
-    await chrome.storage.local.set({notice:task.note+'：'+error.message});
-    void feedback(task.tabId,task.note+'：'+error.message,true);
     try {
       await native('cancel', {gid}).catch(() => {});
       const [original] = await chrome.downloads.search({id: item.id});
@@ -152,22 +142,8 @@ async function intercept(item, retryOf = null) {
 
 chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
   suggest();
-  if(item.byExtensionId===chrome.runtime.id&&manualLinks.has(item.url)) {
-    manualLinks.delete(item.url);item={...item,byExtensionId:undefined};
-    requests.set(item.finalUrl||item.url,{method:'GET',privateRequest:false,headers:{},time:Date.now(),tabId:-1});
-  }
   void intercept(item);
 });
-const manualLinks=new Map();
-if(chrome.contextMenus) {
-  chrome.runtime.onInstalled.addListener(()=>chrome.contextMenus.create({id:'parallel',title:'使用多线程下载',contexts:['link']}));
-  chrome.contextMenus.onClicked.addListener(async(info)=>{
-    if(info.menuItemId!=='parallel'||!/^https?:\/\//.test(info.linkUrl))return;
-    for(const [url,time]of manualLinks)if(Date.now()-time>60000)manualLinks.delete(url);
-    manualLinks.set(info.linkUrl,Date.now());
-    try{await chrome.downloads.download({url:info.linkUrl,saveAs:false});}catch(e){manualLinks.delete(info.linkUrl);await chrome.storage.local.set({notice:e.message});}
-  });
-}
 
 async function poll() {
   await ready;
@@ -186,7 +162,6 @@ async function poll() {
         Object.assign(task, state);
         await persist();
         await chrome.downloads.cancel(task.chromeId).catch(() => {});
-        void feedback(task.tabId,'下载完成：'+task.name);
       } else {
         const [original] = await chrome.downloads.search({id: task.chromeId});
         if (!original || original.state !== 'in_progress') {
@@ -217,19 +192,16 @@ chrome.downloads.onChanged.addListener(async delta => {
 chrome.runtime.onMessage.addListener((msg, sender, respond) => {
   if (sender.id !== chrome.runtime.id) return;
   (async () => {
-    if (msg.action === 'directory-status') return directoryStatus();
-    if (msg.action === 'open-settings') {await chrome.runtime.openOptionsPage();return {};}
     await ready;
     if (msg.action === 'view') {
       void refreshEngine();
       void poll();
-      return {tasks: Object.values(tasks).sort((a,b) => b.created - a.created).slice(0, 100), engine: engineCache,directory:directoryStatus(),
-        settings: await chrome.storage.local.get({enabled: true, connections: 8, theme: 'system',notice:''})};
+      return {tasks: Object.values(tasks).sort((a,b) => b.created - a.created).slice(0, 100), engine: engineCache,
+        settings: await chrome.storage.local.get({enabled: true, connections: 8, theme: 'system'})};
     }
     if (msg.action === 'settings') {
       const connections = [4, 8, 16, 32, 64].includes(Number(msg.connections)) ? Number(msg.connections) : 8;
       await chrome.storage.local.set({enabled: !!msg.enabled, connections});
-      if(['system','light','dark'].includes(msg.theme))await chrome.storage.local.set({theme:msg.theme});
       return {};
     }
     if (msg.action === 'theme') {
@@ -237,11 +209,8 @@ chrome.runtime.onMessage.addListener((msg, sender, respond) => {
       await chrome.storage.local.set({theme: msg.theme});
       return {};
     }
-    if (msg.action === 'set_directory' || msg.action === 'choose_directory') {
-      const result=await native(msg.action,{directory:msg.directory});
-      engineCheckedAt=0;await refreshEngine();
-      await chrome.storage.local.set({directoryName:engineCache.directory||'',notice:''});return result;
-    }
+    if (msg.action === 'set_directory') return native('set_directory', {directory: msg.directory});
+    if (msg.action === 'choose_directory') return native('choose_directory');
     const task = tasks[msg.gid];
     if (!task) throw new Error('任务不存在');
     if (msg.action === 'retry') {

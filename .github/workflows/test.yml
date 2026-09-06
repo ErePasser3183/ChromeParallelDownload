@@ -5,8 +5,34 @@ on:
   pull_request:
 
 jobs:
+  extension:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm run check
+      - run: npm test
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python tests/test_directory.py
+      - run: python tests/test_engine_recovery.py
+      - run: python tests/test_history_cleanup.py
+      - run: python tests/test_staging_cleanup.py
+      - run: python tests/test_transfer_recovery.py
+      - run: npm run package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chrome-parallel-download
+          path: dist/*.zip
+
   logic:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: legacy/native-1.x
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,6 +44,7 @@ jobs:
       - run: node --check extension/background.js
       - run: node --check extension/popup.js
       - run: node tests/test_extension.cjs
+      - run: node tests/test_extension.cjs --feedback
       - run: python -m py_compile native/host.py native/folder_picker.py
       - run: python tests/test_history_cleanup.py
       - run: python tests/test_directory.py
@@ -27,6 +54,9 @@ jobs:
 
   local64:
     runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: legacy/native-1.x
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

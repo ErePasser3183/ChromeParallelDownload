@@ -1,0 +1,13 @@
+{
+  "manifest_version":3,
+  "name":"多线程下载",
+  "version":"2.0.1",
+  "minimum_chrome_version":"116",
+  "description":"纯 Chrome 分段下载，点击立即反馈，无需 CMD、Python 或本机程序。首次选择保存文件夹。",
+  "permissions":["downloads","storage","offscreen","contextMenus","webRequest"],
+  "host_permissions":["http://*/*","https://*/*"],
+  "background":{"service_worker":"background.js","type":"module"},
+  "action":{"default_popup":"popup.html","default_title":"多线程下载"},
+  "options_page":"options.html",
+  "content_scripts":[{"matches":["http://*/*","https://*/*"],"js":["feedback.js"],"run_at":"document_start"}]
+}
